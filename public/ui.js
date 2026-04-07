@@ -526,14 +526,8 @@ export function createUI({ socket, els }) {
           i.value = "";
         }
       }
-      for (const i of remRow.inputs) {
-        if (i.dataset.expected == null) {
-          i.readOnly = true;
-          i.tabIndex = -1;
-          i.classList.add("readonly");
-          i.value = "";
-        }
-      }
+      // 나머지 줄은 "내려쓰기"를 적어둘 수 있어야 해서 비활성화하지 않는다.
+      // 예: 520 - 480 = 40 다음, 1을 내려서 41처럼 중간값을 적어가며 풀이.
 
       stepUI.push({ step, carryRow, prodRow, remRow });
     }
