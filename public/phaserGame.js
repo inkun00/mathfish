@@ -82,7 +82,7 @@ export function createGameClient({ mountId, socket, ui }) {
   const frozen = new Map(); // playerId -> { untilMs, x, y }
 
   const entities = {
-    players: new Map(), // id -> { emojiText, nameText, lastX }
+    players: new Map(), // id -> { emojiText, nameText, lvText, lastX }
     foods: new Map() // id -> { emojiText }
   };
 
@@ -332,7 +332,15 @@ export function createGameClient({ mountId, socket, ui }) {
     });
     // 이름이 너무 떠 보이지 않게, 캐릭터에 더 바짝 붙임
     nameText.setOrigin(0.5, 1.0);
-    ent = { emojiText, nameText, lastX: p.x };
+
+    const lvText = scene.add.text(0, 0, "", {
+      fontFamily: "system-ui, Segoe UI, sans-serif",
+      fontSize: "11px",
+      color: "rgba(255,255,255,0.92)"
+    });
+    lvText.setOrigin(0.5, 0.0);
+
+    ent = { emojiText, nameText, lvText, lastX: p.x };
     entities.players.set(p.id, ent);
     return ent;
   }
@@ -376,6 +384,18 @@ export function createGameClient({ mountId, socket, ui }) {
       const nameX = fr && now < fr.untilMs ? fr.x : p.x;
       ent.nameText.setPosition(nameX, nameY);
 
+      // LV는 "내 캐릭터" 아래에 붙여서 따라다니게 표시
+      if (ent.lvText) {
+        const show = isMe;
+        ent.lvText.setVisible(show);
+        if (show) {
+          ent.lvText.setText(`LV ${Math.max(1, Number(p.size) || 1)}`);
+          const y = (fr && now < fr.untilMs ? fr.y : p.y) + Math.max(12, r * 0.55);
+          const x = fr && now < fr.untilMs ? fr.x : p.x;
+          ent.lvText.setPosition(x, y);
+        }
+      }
+
       // 이동 방향에 따라 좌우 반전(자연스러운 헤엄 느낌)
       const dx = p.x - (ent.lastX ?? p.x);
       if (Math.abs(dx) > 0.5) {
@@ -389,6 +409,7 @@ export function createGameClient({ mountId, socket, ui }) {
       if (seenPlayers.has(id)) continue;
       ent.emojiText.destroy();
       ent.nameText.destroy();
+      ent.lvText?.destroy?.();
       entities.players.delete(id);
     }
 

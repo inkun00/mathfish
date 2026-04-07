@@ -405,6 +405,11 @@ export function createGame({ io, questionData }) {
       const sp = speedForSize(p.size, p.baseSpeed);
       p.speed = sp;
       if (p.bot) botThinkAndAct(p, t);
+      // 문제 풀이 중에는 서버에서도 완전히 정지(마지막 입력 잔상 제거)
+      if (p.pendingQuestion) {
+        p.vx = 0;
+        p.vy = 0;
+      }
       p.x = clamp(p.x + p.vx * sp * 8 * MOVE_SCALE, 20, WORLD.w - 20);
       p.y = clamp(p.y + p.vy * sp * 8 * MOVE_SCALE, 20, WORLD.h - 20);
     }
@@ -513,6 +518,8 @@ export function createGame({ io, questionData }) {
     });
 
     socket.on("input", ({ vx, vy }) => {
+      // 문제 풀이 중에는 이동 입력을 받지 않는다(클라 버그/지연 대비)
+      if (p.pendingQuestion) return;
       p.vx = clamp(Number(vx) || 0, -1, 1);
       p.vy = clamp(Number(vy) || 0, -1, 1);
     });

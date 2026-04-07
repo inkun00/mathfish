@@ -125,20 +125,7 @@ body {
 }
 
 #levelHud {
-  position: fixed;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: -0.01em;
-  color: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
-  pointer-events: none;
+  display: none;
 }
 
 .startOverlay {
