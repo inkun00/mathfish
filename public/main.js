@@ -31,7 +31,12 @@ if (!window.Phaser) {
   );
 }
 
-const socket = window.io();
+const serverUrl =
+  typeof window !== "undefined" && window.MATHFISH_SERVER_URL
+    ? window.MATHFISH_SERVER_URL
+    : undefined;
+
+const socket = serverUrl ? window.io(serverUrl) : window.io();
 
 let ui = null;
 let game = null;
