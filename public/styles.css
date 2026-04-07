@@ -92,6 +92,18 @@ body {
   margin: 4px 0;
 }
 
+#recordList {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  opacity: 0.92;
+}
+
+#recordList li {
+  margin: 4px 0;
+  color: rgba(255, 255, 255, 0.85);
+}
+
 #toast {
   position: absolute;
   left: 50%;

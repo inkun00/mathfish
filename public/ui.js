@@ -77,6 +77,17 @@ export function createUI({ socket, els }) {
     }
   }
 
+  function setGameOverRanking(top) {
+    if (!els.recordList) return;
+    els.recordList.innerHTML = "";
+    for (const r of top ?? []) {
+      const li = document.createElement("li");
+      const by = r.byName ? ` ← ${r.byName}` : "";
+      li.textContent = `${r.name} (크기 ${r.size})${by}`;
+      els.recordList.appendChild(li);
+    }
+  }
+
   function toast(msg) {
     if (!msg) return;
     els.toast.textContent = msg;
@@ -651,6 +662,7 @@ export function createUI({ socket, els }) {
     getSelfId,
     onState,
     setRanking,
+    setGameOverRanking,
     toast,
     promptName,
     startCountdown,

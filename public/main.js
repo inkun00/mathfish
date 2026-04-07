@@ -54,6 +54,7 @@ try {
       nameInput: document.getElementById("nameInput"),
       nameSubmit: document.getElementById("nameSubmit"),
       rankingList: document.getElementById("rankingList"),
+      recordList: document.getElementById("recordList"),
       toast: document.getElementById("toast"),
       questionModal: document.getElementById("questionModal"),
       qTitle: document.getElementById("qTitle"),
@@ -103,6 +104,10 @@ socket.on("state", (snap) => {
 
 socket.on("ranking", ({ top }) => {
   ui?.setRanking(top);
+});
+
+socket.on("gameover_ranking", ({ top }) => {
+  ui?.setGameOverRanking?.(top);
 });
 
 socket.on("question", ({ q }) => {

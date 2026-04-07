@@ -80,6 +80,11 @@ export function createGame({ io, questionData }) {
   const players = new Map(); // socket.id -> player
   const foods = new Map(); // foodId -> food
 
+  // 게임 오버(포식) 시점의 최고 기록 리더보드(서버 메모리)
+  // - 의도: "죽었을 때의 크기"를 기록해 학습/플레이 성취감을 남긴다.
+  // - 범위: 봇은 제외(사람 기록만)
+  const gameOverRecords = []; // { name, size, byName, at }
+
   let turtleEvent = null; // { id, question, startedAt }
   let nextTurtleAt = nowMs() + 5 * 60 * 1000;
 
@@ -322,6 +327,31 @@ export function createGame({ io, questionData }) {
     io.emit("ranking", { top });
   }
 
+  function emitGameOverRanking(toSocket = null) {
+    const top = gameOverRecords
+      .slice()
+      .sort((a, b) => b.size - a.size || b.at - a.at)
+      .slice(0, 10)
+      .map((r) => ({ name: r.name, size: r.size, byName: r.byName ?? null, at: r.at }));
+    if (toSocket) toSocket.emit("gameover_ranking", { top });
+    else io.emit("gameover_ranking", { top });
+  }
+
+  function recordGameOver({ victim, eater }) {
+    if (!victim || victim.bot) return;
+    const size = Number(victim.size);
+    if (!Number.isFinite(size) || size <= 0) return;
+    gameOverRecords.push({
+      name: victim.name,
+      size,
+      byName: eater?.name ?? null,
+      at: nowMs()
+    });
+    // 메모리 폭주 방지
+    if (gameOverRecords.length > 200) gameOverRecords.splice(0, gameOverRecords.length - 200);
+    emitGameOverRanking();
+  }
+
   function spawnFood(kind, near = null) {
     const x = near ? clamp(near.x + rand(-120, 120), 40, WORLD.w - 40) : rand(40, WORLD.w - 40);
     const y = near ? clamp(near.y + rand(-120, 120), 40, WORLD.h - 40) : rand(40, WORLD.h - 40);
@@ -406,6 +436,8 @@ export function createGame({ io, questionData }) {
             eater: { x: bigger.x, y: bigger.y },
             victim: { x: smaller.x, y: smaller.y }
           });
+          // 게임 오버 기록은 리스폰으로 size가 리셋되기 전에 저장
+          recordGameOver({ victim: smaller, eater: bigger });
           io.emit("toast", { to: bigger.id, msg: `${smaller.name}를 잡아먹었다!` });
           respawn(smaller);
         }
@@ -465,6 +497,7 @@ export function createGame({ io, questionData }) {
     });
 
     emitRanking();
+    emitGameOverRanking(socket);
 
     socket.on("set_name", ({ name }) => {
       const nm = String(name ?? "").trim().slice(0, 10);
