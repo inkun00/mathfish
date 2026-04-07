@@ -1,0 +1,11 @@
+{
+  "ZERO_COUNT": {
+    "name": "0의 개수 오류",
+    "tooltip": "0의 개수를 확인해봐!"
+  },
+  "TIMES_TABLE_LINK": {
+    "name": "구구단 연계 필요",
+    "tooltip": "구구단으로 바꿔서 생각해봐!"
+  }
+}
+

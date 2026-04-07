@@ -1,0 +1,19 @@
+{
+  "name": "mathfish",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MathFish.io - real-time multiplayer survival learning game (Grade 4 mul/div).",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "node server/index.js",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.8.1"
+  }
+}
+

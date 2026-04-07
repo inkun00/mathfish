@@ -1,0 +1,14 @@
+{
+  "notes": "MVP는 대부분 생성기 기반. 여기는 UI 텍스트/설정용 placeholder.",
+  "remedial": {
+    "mul_zero_magic": {
+      "title": "치유의 물방울 (0의 마법진)",
+      "hint": "먼저 0을 빼고 곱한 다음, 0을 붙여봐!"
+    },
+    "div_times_table_link": {
+      "title": "요정 해마의 퀴즈 (구구단 연계)",
+      "hint": "나눗셈을 곱셈으로 바꿔보자!"
+    }
+  }
+}
+

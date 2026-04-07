@@ -1,0 +1,583 @@
+:root {
+  --bg: #06131f;
+  --panel: rgba(255, 255, 255, 0.08);
+  --panel2: rgba(255, 255, 255, 0.12);
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.7);
+  --accent: #38bdf8;
+  --danger: #fb7185;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: radial-gradient(1200px 800px at 50% 30%, #0b2a45 0%, var(--bg) 65%, #040b12 100%);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif;
+  overflow: hidden;
+}
+
+#gameWrap {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+#game {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Phaser가 삽입하는 canvas가 화면을 꽉 채우도록 강제 */
+#game canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+#hud {
+  position: fixed;
+  inset: 12px 12px auto 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  pointer-events: none;
+}
+
+#title {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(90deg, #a5f3fc 0%, #38bdf8 45%, #60a5fa 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 18px;
+  text-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+}
+
+#me {
+  font-size: 12px;
+  color: var(--muted);
+  align-self: center;
+}
+
+#ranking {
+  pointer-events: auto;
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 190px;
+  backdrop-filter: blur(10px);
+}
+
+.panel-title {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+#rankingList {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+#rankingList li {
+  margin: 4px 0;
+}
+
+#toast {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0;
+  transition: opacity 180ms ease;
+  pointer-events: none;
+}
+
+#toast.show {
+  opacity: 1;
+}
+
+#levelHud {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.startOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(900px 600px at 50% 35%, rgba(56, 189, 248, 0.12), rgba(0, 0, 0, 0.55));
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 1000;
+  letter-spacing: -0.02em;
+  font-size: 44px;
+  text-shadow: 0 12px 60px rgba(0, 0, 0, 0.55);
+  user-select: none;
+}
+
+.startOverlay.hidden {
+  display: none;
+}
+
+.fatal {
+  position: fixed;
+  inset: 10px 10px auto 10px;
+  max-height: 45vh;
+  overflow: auto;
+  z-index: 9999;
+  white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+}
+
+.fatal.hidden {
+  display: none;
+}
+
+#questionModal {
+  position: fixed;
+  inset: auto 0 0 0;
+  display: flex;
+  justify-content: center;
+  padding: 14px 12px 16px;
+  pointer-events: auto;
+}
+
+#questionModal.hidden {
+  display: none;
+}
+
+/* 이름 설정 모달: 문제 모달과 동일한 레이아웃 */
+#nameModal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 14px 12px 16px;
+  pointer-events: auto;
+}
+
+#nameModal.hidden {
+  display: none;
+}
+
+.q-card {
+  width: min(680px, 96vw);
+  background: rgba(4, 12, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  padding: 12px;
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.45);
+}
+
+.q-title {
+  font-weight: 800;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.q-prompt {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+}
+
+.q-timer {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.q-inputArea {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.vmul {
+  display: grid;
+  gap: 8px;
+}
+
+.vmulGrid {
+  display: grid;
+  gap: 6px;
+  justify-content: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.vmulRow {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 34px;
+  gap: 6px;
+  justify-content: end;
+  align-items: end;
+}
+
+/* 올림 행: 같은 열 그리드에 맞추되 칸만 작게 (실제 곱셈 숫자와 헷갈리지 않게) */
+.vmulRow.vmulRow--carry {
+  gap: 6px;
+  min-height: 20px;
+  margin-bottom: 2px;
+  align-items: end;
+}
+
+.vmulDigit {
+  width: 34px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text);
+  text-align: center;
+  font-size: 18px;
+  font-weight: 900;
+  padding: 0;
+}
+
+.vmulDigit.readonly {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.vmulCarry {
+  box-sizing: border-box;
+  width: 20px;
+  height: 17px;
+  border-radius: 5px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  background: rgba(120, 170, 220, 0.07);
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
+  justify-self: center;
+  align-self: end;
+}
+
+.vmulLine {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.18);
+  justify-self: end;
+  width: 100%;
+}
+
+.vmulHint {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.vmulHint .pill {
+  margin-left: auto;
+}
+
+.vdiv {
+  display: grid;
+  gap: 8px;
+}
+
+.vdivHint {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.vdivLayout {
+  display: grid;
+  justify-content: end;
+  align-items: start;
+  font-variant-numeric: tabular-nums;
+  overflow: visible;
+}
+
+.vdivExpr {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  grid-template-rows: 36px 2px 36px;
+  gap: 0;
+  row-gap: 6px;
+  align-items: end;
+  justify-content: end;
+}
+
+.vdivDivisor {
+  grid-column: 1;
+  grid-row: 3;
+  align-self: end;
+}
+
+.vdivParen {
+  grid-column: 2;
+  grid-row: 3;
+  font-weight: 900;
+  font-size: 44px;
+  color: rgba(255, 255, 255, 0.70);
+  padding: 0 0 2px;
+  line-height: 1;
+  align-self: end;
+}
+
+.vdivQuot {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.vdivOverline {
+  grid-column: 3;
+  grid-row: 2;
+  justify-self: end;
+  align-self: stretch;
+}
+
+.vdivDividend {
+  grid-column: 3;
+  grid-row: 3;
+  justify-self: end;
+}
+
+.vdivOverline {
+  height: 2px;
+  background: rgba(255, 255, 255, 0.18);
+  width: 100%;
+  border-radius: 2px;
+  align-self: stretch;
+}
+
+.vdivCalcBox {
+  justify-self: end;
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.vdivRow {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 34px;
+  gap: 6px;
+  justify-content: end;
+  align-items: end;
+}
+
+.vdivRow--carry {
+  min-height: 18px;
+  margin-bottom: -2px;
+}
+
+.vdivCarry {
+  box-sizing: border-box;
+  width: 18px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1px dashed rgba(255, 255, 255, 0.20);
+  background: rgba(120, 170, 220, 0.06);
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
+  justify-self: center;
+  align-self: end;
+}
+
+.vdivMinus {
+  position: relative;
+}
+
+.vdivMinus::before {
+  content: "−";
+  position: absolute;
+  left: -18px;
+  bottom: 6px;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 900;
+}
+
+.vdivLine {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.18);
+  justify-self: end;
+  width: 100%;
+}
+
+.vdivLabel {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.keypad button {
+  padding: 10px 0;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-weight: 800;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.keypad button:active {
+  transform: translateY(1px);
+}
+
+.answerRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.answerRow input {
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.pill {
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 8px 10px;
+  border-radius: 999px;
+}
+
+.q-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+button.primary,
+button.secondary {
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+button.primary {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: rgba(56, 189, 248, 0.35);
+  color: var(--text);
+}
+
+button.secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+#turtleBar {
+  position: fixed;
+  left: 50%;
+  top: 64px;
+  transform: translateX(-50%);
+  width: min(760px, 94vw);
+  background: rgba(4, 12, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+#turtleBar.hidden {
+  display: none;
+}
+
+.turtle-title {
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.turtle-prompt {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.turtle-input {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.turtle-input input {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.turtle-input button {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-weight: 900;
+  cursor: pointer;
+}
+

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>MathFish.io</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="hud">
+      <div id="title">수학 물고기 대작전</div>
+      <div id="me"></div>
+      <div id="ranking">
+        <div class="panel-title">랭킹</div>
+        <ol id="rankingList"></ol>
+      </div>
+    </div>
+
+    <div id="gameWrap">
+      <div id="game"></div>
+      <div id="toast"></div>
+    </div>
+
+    <div id="levelHud" aria-hidden="true"></div>
+    <div id="startOverlay" class="startOverlay hidden" aria-hidden="true"></div>
+
+    <pre id="fatalOverlay" class="fatal hidden" aria-hidden="true"></pre>
+
+    <div id="questionModal" class="hidden" aria-hidden="true">
+      <div class="q-card">
+        <div class="q-title" id="qTitle">문제</div>
+        <div class="q-prompt" id="qPrompt"></div>
+        <div class="q-timer" id="qTimer"></div>
+        <div class="q-inputArea" id="qInputArea"></div>
+        <div class="q-actions">
+          <button id="qCancel" class="secondary">닫기</button>
+          <button id="qSubmit" class="primary">제출</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="nameModal" class="hidden" aria-hidden="true">
+      <div class="q-card">
+        <div class="q-title" id="nameTitle">이름 설정</div>
+        <div class="q-prompt" id="namePrompt">게임에서 사용할 이름을 입력해줘.</div>
+        <div class="q-inputArea">
+          <div class="answerRow">
+            <input id="nameInput" maxlength="10" placeholder="예: 수학천재" />
+            <div class="pill">최대 10자</div>
+          </div>
+        </div>
+        <div class="q-actions">
+          <button id="nameSubmit" class="primary">시작</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="turtleBar" class="hidden" aria-hidden="true">
+      <div class="turtle-title">거북이 구출 작전</div>
+      <div class="turtle-prompt" id="turtlePrompt"></div>
+      <div class="turtle-input">
+        <input id="turtleAnswer" inputmode="numeric" placeholder="정답" />
+        <button id="turtleSubmit">제출</button>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
+
