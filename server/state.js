@@ -432,6 +432,16 @@ export function createGame({ io, questionData }) {
         const rs = radiusForSize(smaller.size);
         const eatR = Math.max(2, rb - rs);
         if (dist2(bigger, smaller) <= eatR * eatR) {
+          const ranked = arr
+            .slice()
+            .sort((x, y) => y.size - x.size)
+            .map((p) => ({ id: p.id, name: p.name, size: p.size }));
+          const victimRank = Math.max(
+            1,
+            ranked.findIndex((pp) => pp.id === smaller.id) + 1
+          );
+          const top = ranked.slice(0, 10);
+
           const gain = Math.max(1, Math.floor(smaller.size / 2));
           if (bigger.bot) {
             bigger.growBank = (Number.isFinite(bigger.growBank) ? bigger.growBank : 0) + gain * 0.5;
@@ -447,7 +457,10 @@ export function createGame({ io, questionData }) {
             eaterId: bigger.id,
             victimId: smaller.id,
             eater: { x: bigger.x, y: bigger.y },
-            victim: { x: smaller.x, y: smaller.y }
+            victim: { x: smaller.x, y: smaller.y },
+            victimRank,
+            victimSize: smaller.size,
+            top
           });
           // 게임 오버 기록은 리스폰으로 size가 리셋되기 전에 저장
           recordGameOver({ victim: smaller, eater: bigger });

@@ -26,6 +26,18 @@
     <div id="levelHud" aria-hidden="true"></div>
     <div id="startOverlay" class="startOverlay hidden" aria-hidden="true"></div>
 
+    <div id="gameOverOverlay" class="gameOver hidden" aria-hidden="true">
+      <div class="q-card gameOverCard">
+        <div class="q-title">게임 오버</div>
+        <div class="q-prompt" id="gameOverTitle"></div>
+        <div class="panel-title" style="margin-top:8px">이번 판 TOP 10</div>
+        <ol id="gameOverList"></ol>
+        <div class="q-actions">
+          <button id="gameOverClose" class="primary">확인</button>
+        </div>
+      </div>
+    </div>
+
     <pre id="fatalOverlay" class="fatal hidden" aria-hidden="true"></pre>
 
     <div id="questionModal" class="hidden" aria-hidden="true">

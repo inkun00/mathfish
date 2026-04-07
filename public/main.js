@@ -60,6 +60,10 @@ try {
       rankingList: document.getElementById("rankingList"),
       recordList: document.getElementById("recordList"),
       toast: document.getElementById("toast"),
+      gameOverOverlay: document.getElementById("gameOverOverlay"),
+      gameOverTitle: document.getElementById("gameOverTitle"),
+      gameOverList: document.getElementById("gameOverList"),
+      gameOverClose: document.getElementById("gameOverClose"),
       questionModal: document.getElementById("questionModal"),
       qTitle: document.getElementById("qTitle"),
       qPrompt: document.getElementById("qPrompt"),
@@ -148,6 +152,7 @@ socket.on("player_respawn", (p) => {
   }
 });
 socket.on("player_eaten", (e) => game?.onPlayerEaten?.(e));
+socket.on("player_eaten", (e) => ui?.onPlayerEaten?.(e));
 
 socket.on("turtle_start", ({ id, prompt }) => {
   ui?.openTurtle({ id, prompt });

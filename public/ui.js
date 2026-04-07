@@ -44,6 +44,7 @@ export function createUI({ socket, els, onQuestionOpen, onQuestionClose, onTurtl
   let questionDeadline = 0;
   let questionTimer = null;
   let turtleOpen = null;
+  let gameOverOpen = false;
 
   function setMe({ selfId: id, name }) {
     selfId = id;
@@ -94,6 +95,29 @@ export function createUI({ socket, els, onQuestionOpen, onQuestionClose, onTurtl
     els.toast.classList.add("show");
     window.clearTimeout(toast._t);
     toast._t = window.setTimeout(() => els.toast.classList.remove("show"), 1700);
+  }
+
+  function openGameOver({ victimRank, victimSize, top }) {
+    if (!els.gameOverOverlay || !els.gameOverTitle || !els.gameOverList) return;
+    gameOverOpen = true;
+    const rank = Math.max(1, Number(victimRank) || 1);
+    const size = Math.max(1, Number(victimSize) || 1);
+    els.gameOverTitle.textContent = `내 순위: ${rank}위 (크기 ${size})`;
+    els.gameOverList.innerHTML = "";
+    for (const p of top ?? []) {
+      const li = document.createElement("li");
+      li.textContent = `${p.name} (크기 ${p.size})`;
+      els.gameOverList.appendChild(li);
+    }
+    els.gameOverOverlay.classList.remove("hidden");
+    els.gameOverOverlay.setAttribute("aria-hidden", "false");
+  }
+
+  function closeGameOver() {
+    if (!els.gameOverOverlay) return;
+    gameOverOpen = false;
+    els.gameOverOverlay.classList.add("hidden");
+    els.gameOverOverlay.setAttribute("aria-hidden", "true");
   }
 
   function promptName({ title = "이름 설정", cta = "시작" } = {}) {
@@ -662,6 +686,12 @@ export function createUI({ socket, els, onQuestionOpen, onQuestionClose, onTurtl
     }
   }
 
+  function onPlayerEaten({ victimId, victimRank, victimSize, top }) {
+    if (!selfId) return;
+    if (victimId !== selfId) return;
+    openGameOver({ victimRank, victimSize, top });
+  }
+
   els.qCancel.addEventListener("click", () => abandonQuestion());
   els.qSubmit.addEventListener("click", () => submitQuestion());
 
@@ -670,6 +700,8 @@ export function createUI({ socket, els, onQuestionOpen, onQuestionClose, onTurtl
     const answer = Number(els.turtleAnswer.value);
     socket.emit("turtle_answer", { answer });
   });
+
+  els.gameOverClose?.addEventListener?.("click", () => closeGameOver());
 
   return {
     setMe,
@@ -684,7 +716,10 @@ export function createUI({ socket, els, onQuestionOpen, onQuestionClose, onTurtl
     submitQuestionIfOpen,
     onAnswerResult,
     openTurtle,
-    closeTurtle
+    closeTurtle,
+    onPlayerEaten,
+    closeGameOver: () => closeGameOver(),
+    isGameOverOpen: () => gameOverOpen
   };
 }
 
