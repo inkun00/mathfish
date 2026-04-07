@@ -390,9 +390,10 @@ export function createGameClient({ mountId, socket, ui }) {
         ent.lvText.setVisible(show);
         if (show) {
           ent.lvText.setText(`LV ${Math.max(1, Number(p.size) || 1)}`);
-          const y = (fr && now < fr.untilMs ? fr.y : p.y) + Math.max(12, r * 0.55);
-          const x = fr && now < fr.untilMs ? fr.x : p.x;
-          ent.lvText.setPosition(x, y);
+          // 스프라이트(이모지 텍스트) 실제 바닥선 바로 아래에 붙인다.
+          // (origin/폰트사이즈 변경에도 안정적으로 따라가게)
+          const bb = ent.emojiText.getBounds();
+          ent.lvText.setPosition(bb.centerX, bb.bottom + 2);
         }
       }
 
