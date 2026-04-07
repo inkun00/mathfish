@@ -37,7 +37,7 @@ function makeDigitInput({ kind = "digit", readonly = false } = {}) {
   return input;
 }
 
-export function createUI({ socket, els }) {
+export function createUI({ socket, els, onQuestionOpen, onQuestionClose, onTurtleOpen, onTurtleClose }) {
   let selfId = null;
   let selfName = null;
   let openQuestion = null;
@@ -170,6 +170,11 @@ export function createUI({ socket, els }) {
     els.questionModal.classList.add("hidden");
     els.questionModal.setAttribute("aria-hidden", "true");
     els.qInputArea.innerHTML = "";
+    try {
+      onQuestionClose?.();
+    } catch {
+      // ignore
+    }
   }
 
   function renderNumberPad({ placeholder = "정답" } = {}) {
@@ -558,6 +563,11 @@ export function createUI({ socket, els }) {
     els.questionModal.classList.remove("hidden");
     els.questionModal.setAttribute("aria-hidden", "false");
     els.qInputArea.innerHTML = "";
+    try {
+      onQuestionOpen?.();
+    } catch {
+      // ignore
+    }
 
     if (q.ui?.type === "choice") openQuestion.uiState = renderChoice({ options: q.ui.options });
     else if (q.ui?.type === "vertical_mul" && q.meta?.a != null && q.meta?.b != null) {
@@ -631,6 +641,11 @@ export function createUI({ socket, els }) {
     els.turtleBar.setAttribute("aria-hidden", "false");
     els.turtleAnswer.value = "";
     els.turtleAnswer.focus();
+    try {
+      onTurtleOpen?.();
+    } catch {
+      // ignore
+    }
   }
 
   function closeTurtle({ answeredBy }) {
@@ -640,6 +655,11 @@ export function createUI({ socket, els }) {
     els.turtleBar.setAttribute("aria-hidden", "true");
     if (answeredBy && answeredBy === selfId) toast("거북이를 구출했다!");
     else if (answeredBy) toast("다른 플레이어가 먼저 구출했다!");
+    try {
+      onTurtleClose?.();
+    } catch {
+      // ignore
+    }
   }
 
   els.qCancel.addEventListener("click", () => abandonQuestion());

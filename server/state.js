@@ -212,6 +212,7 @@ export function createGame({ io, questionData }) {
 
     p.pendingQuestion = null;
     p.shieldUntil = nowMs() + 800;
+    p.pvpUntil = p.shieldUntil;
   }
 
   function botThinkAndAct(p, t) {
@@ -290,6 +291,13 @@ export function createGame({ io, questionData }) {
       const key = p.bias.remedialNext ? p.bias.remedialNextKey ?? "div_10s" : best.questionKey;
       const q = buildQuestion({ questionKey: key, questionData, player: p });
       p.pendingQuestion = { q, foodKind: best.kind, askedAt: nowMs() };
+      // 봇도 문제 풀이 중에는 포식/피격 불가(양방향 PvP 잠금)
+      // (봇은 클라 입력이 없으므로 이동만 멈추면 충분)
+      const botShield = q.timeLimitMs == null ? nowMs() + 24 * 60 * 60 * 1000 : nowMs() + (q.timeLimitMs ?? 15000) + 2000;
+      p.shieldUntil = botShield;
+      p.pvpUntil = botShield;
+      p.vx = 0;
+      p.vy = 0;
       p.bias.remedialNext = false;
       p.bias.remedialNextKey = null;
       p.bot.answerAt = 0;
@@ -525,6 +533,10 @@ export function createGame({ io, questionData }) {
       p.pendingQuestion = { q, foodKind: f.kind, askedAt: nowMs() };
       if (q.timeLimitMs == null) p.shieldUntil = nowMs() + 24 * 60 * 60 * 1000;
       else p.shieldUntil = nowMs() + (q.timeLimitMs ?? 15000) + 2000;
+      // 문제 풀이 중에는 이동/포식/피격 불가(양방향 PvP 잠금)
+      p.pvpUntil = p.shieldUntil;
+      p.vx = 0;
+      p.vy = 0;
       p.bias.remedialNext = false;
       p.bias.remedialNextKey = null;
 

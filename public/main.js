@@ -44,6 +44,10 @@ let game = null;
 try {
   ui = createUI({
     socket,
+    onQuestionOpen: () => game?.setControlsEnabled?.(false),
+    onQuestionClose: () => game?.setControlsEnabled?.(true),
+    onTurtleOpen: () => game?.setControlsEnabled?.(false),
+    onTurtleClose: () => game?.setControlsEnabled?.(true),
     els: {
       me: document.getElementById("me"),
       levelHud: document.getElementById("levelHud"),
