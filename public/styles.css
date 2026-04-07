@@ -489,6 +489,17 @@ body {
   font-weight: 800;
 }
 
+/* 이름 입력창은 너무 길지 않게(대략 1/2 폭) */
+#nameModal .answerRow {
+  grid-template-columns: minmax(160px, 340px) auto;
+  justify-content: center;
+}
+
+#nameModal .answerRow input {
+  width: 100%;
+  max-width: 340px;
+}
+
 .pill {
   font-size: 12px;
   color: var(--muted);
