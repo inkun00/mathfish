@@ -88,40 +88,45 @@ export function createGame({ io, questionData }) {
   let turtleEvent = null; // { id, question, startedAt }
   let nextTurtleAt = nowMs() + 5 * 60 * 1000;
 
-  const BOT_COUNT = 6;
+  const BOT_COUNT = 25;
   const botIds = new Set();
+  let botSerial = 0;
 
-  function makeBot(i) {
-    const id = `bot_${i}_${Math.random().toString(36).slice(2, 7)}`;
+  function pickBotSize() {
+    // 1~20단계, 작은 물고기가 더 많도록 가중 분포
+    const r = Math.random();
+    if (r < 0.35) return Math.floor(rand(1, 5));    // 1~4: 35%
+    if (r < 0.65) return Math.floor(rand(5, 10));   // 5~9: 30%
+    if (r < 0.85) return Math.floor(rand(10, 15));  // 10~14: 20%
+    return Math.floor(rand(15, 21));                 // 15~20: 15%
+  }
+
+  function makeBot() {
+    botSerial += 1;
+    const id = `bot_${botSerial}_${Math.random().toString(36).slice(2, 7)}`;
+    const fixedSize = pickBotSize();
     const p = {
       id,
-      name: `AI물고기${i + 1}`,
+      name: `AI물고기${botSerial}`,
       x: rand(60, WORLD.w - 60),
       y: rand(60, WORLD.h - 60),
-      vx: 0,
-      vy: 0,
-      size: 1,
-      growBank: 0,
+      vx: rand(-1, 1),
+      vy: rand(-1, 1),
+      size: fixedSize,
       combo: 0,
-      baseSpeed: 1.45,
-      speed: 1.45,
-      shieldUntil: nowMs() + 800,
-      pvpUntil: nowMs() + 1200,
+      baseSpeed: 1.3,
+      speed: 1.3,
+      shieldUntil: 0,
+      pvpUntil: 0,
       pendingQuestion: null,
       streak: 0,
-      mulWrongStreak: 0,
-      divWrongStreak: 0,
-      mulBasicTier: questionData.mulBasicTier.default,
-      divBasicTier: questionData.divBasicTier.default,
-      avgSolveMs: 2200,
-      bias: { remedialNext: false, remedialNextKey: null },
-      bot: { nextThinkAt: 0, answerAt: 0, targetFoodId: null }
+      bot: { nextDirAt: 0, fixedSize }
     };
     botIds.add(id);
     players.set(id, p);
   }
 
-  for (let i = 0; i < BOT_COUNT; i += 1) makeBot(i);
+  for (let i = 0; i < BOT_COUNT; i += 1) makeBot();
 
   function safeEmit(socket, event, payload) {
     if (!socket) return;
@@ -146,14 +151,7 @@ export function createGame({ io, questionData }) {
       p.combo += 1;
       if (pq.q.domain === "mul") p.mulWrongStreak = 0;
       if (pq.q.domain === "div") p.divWrongStreak = 0;
-      // AI 물고기 성장 속도: 사람 대비 1/2
-      if (p.bot) {
-        p.growBank = (Number.isFinite(p.growBank) ? p.growBank : 0) + 0.5;
-        while (p.growBank >= 1) {
-          p.size += 1;
-          p.growBank -= 1;
-        }
-      } else {
+      if (!p.bot) {
         p.size += 1;
       }
       p.baseSpeed = clamp(p.baseSpeed + 0.02, 1.2, 2.2);
@@ -217,91 +215,13 @@ export function createGame({ io, questionData }) {
 
   function botThinkAndAct(p, t) {
     if (!p.bot) return;
-    if (t < p.bot.nextThinkAt) return;
-    p.bot.nextThinkAt = t + rand(120, 260);
+    if (t < p.bot.nextDirAt) return;
 
-    if (p.pendingQuestion) {
-      const pq = p.pendingQuestion;
-      // 봇도 "생각하는 시간"을 갖도록 지연 후 답을 제출
-      if (!p.bot.answerAt) {
-        // 가장 느린 사람 플레이어 속도를 기준으로 AI 풀이 속도를 동적으로 맞춤
-        let slowest = 2200;
-        for (const hp of players.values()) {
-          if (hp.bot) continue;
-          const v = Number(hp.avgSolveMs);
-          if (Number.isFinite(v) && v > slowest) slowest = v;
-        }
-        const domain = pq.q.domain;
-        const domainScale = domain === "word" ? 1.25 : domain === "div" ? 1.1 : 1.0;
-        const jitterScale = rand(0.85, 1.15);
-        const base = slowest * domainScale * jitterScale;
-        p.bot.answerAt = t + Math.max(450, Math.min(6000, base));
-      }
-      if (t < p.bot.answerAt) return;
-      p.bot.answerAt = 0;
-
-      // 랜덤하게 맞추고/틀리기 (기본 72% 정답)
-      const okProb = 0.72;
-      const ok = Math.random() < okProb;
-
-      let userAnswer;
-      if (ok) userAnswer = pq.q.answer;
-      else {
-        // 오답은 "그럴듯하게": 답 근처 또는 한 자리 실수
-        const a = Number(pq.q.answer);
-        const delta = Math.random() < 0.5 ? -1 : 1;
-        const magnitude = Math.random() < 0.7 ? 1 : Math.random() < 0.5 ? 2 : 3;
-        userAnswer = Number.isFinite(a) ? a + delta * magnitude : null;
-      }
-
-      resolveAnswer({ p, pq, userAnswer, socket: null });
-      emitRanking();
-      return;
-    }
-
-    // 가장 가까운 먹이 추적
-    let best = null;
-    let bestD = Infinity;
-    for (const f of foods.values()) {
-      const d = dist2(p, f);
-      if (d < bestD) {
-        bestD = d;
-        best = f;
-      }
-    }
-    if (!best) {
-      p.vx = rand(-1, 1);
-      p.vy = rand(-1, 1);
-      return;
-    }
-
-    const dx = best.x - p.x;
-    const dy = best.y - p.y;
-    const mag = Math.hypot(dx, dy) || 1;
-    p.vx = clamp(dx / mag, -1, 1);
-    p.vy = clamp(dy / mag, -1, 1);
-
-    // 가까우면 먹기 + 즉시 문제 생성
-    const rr = radiusForSize(p.size) + best.r + 4;
-    if (bestD <= rr * rr) {
-      const foodId = best.id;
-      foods.delete(foodId);
-      io.emit("food_despawn", { id: foodId });
-
-      const key = p.bias.remedialNext ? p.bias.remedialNextKey ?? "div_10s" : best.questionKey;
-      const q = buildQuestion({ questionKey: key, questionData, player: p });
-      p.pendingQuestion = { q, foodKind: best.kind, askedAt: nowMs() };
-      // 봇도 문제 풀이 중에는 포식/피격 불가(양방향 PvP 잠금)
-      // (봇은 클라 입력이 없으므로 이동만 멈추면 충분)
-      const botShield = q.timeLimitMs == null ? nowMs() + 24 * 60 * 60 * 1000 : nowMs() + (q.timeLimitMs ?? 15000) + 2000;
-      p.shieldUntil = botShield;
-      p.pvpUntil = botShield;
-      p.vx = 0;
-      p.vy = 0;
-      p.bias.remedialNext = false;
-      p.bias.remedialNextKey = null;
-      p.bot.answerAt = 0;
-    }
+    // 1~3초마다 랜덤 방향 전환, 자유롭게 떠다님
+    p.bot.nextDirAt = t + rand(1000, 3000);
+    const angle = Math.random() * Math.PI * 2;
+    p.vx = Math.cos(angle) * rand(0.3, 0.8);
+    p.vy = Math.sin(angle) * rand(0.3, 0.8);
   }
 
   function broadcastSnapshot() {
@@ -397,6 +317,7 @@ export function createGame({ io, questionData }) {
   function tick() {
     const t = nowMs();
     ensureFoods();
+    ensureBots();
 
     if (!turtleEvent && t >= nextTurtleAt) startTurtleEvent();
     if (turtleEvent && t - turtleEvent.startedAt > turtleEvent.question.timeLimitMs + 3000) endTurtleEvent();
@@ -443,13 +364,7 @@ export function createGame({ io, questionData }) {
           const top = ranked.slice(0, 10);
 
           const gain = Math.max(1, Math.floor(smaller.size / 2));
-          if (bigger.bot) {
-            bigger.growBank = (Number.isFinite(bigger.growBank) ? bigger.growBank : 0) + gain * 0.5;
-            while (bigger.growBank >= 1) {
-              bigger.size += 1;
-              bigger.growBank -= 1;
-            }
-          } else {
+          if (!bigger.bot) {
             bigger.size += gain;
           }
           bigger.combo += 1;
@@ -474,18 +389,36 @@ export function createGame({ io, questionData }) {
   }
 
   function respawn(p) {
-    p.size = 1;
+    if (p.bot) {
+      const newSize = pickBotSize();
+      p.size = newSize;
+      p.bot.fixedSize = newSize;
+      p.baseSpeed = 1.3;
+    } else {
+      p.size = 1;
+      p.baseSpeed = 1.6;
+    }
     p.combo = 0;
-    p.baseSpeed = 1.6;
     p.vx = 0;
     p.vy = 0;
-    // 리스폰 후 5초 준비시간(무적) 제공
     p.shieldUntil = nowMs() + 5000;
     p.pvpUntil = nowMs() + 5000;
     p.x = rand(60, WORLD.w - 60);
     p.y = rand(60, WORLD.h - 60);
     p.pendingQuestion = null;
     io.emit("player_respawn", { id: p.id, x: p.x, y: p.y });
+  }
+
+  function ensureBots() {
+    let botCount = 0;
+    for (const id of botIds) {
+      if (players.has(id)) botCount += 1;
+    }
+    const desired = Math.floor(rand(20, 31));
+    while (botCount < desired) {
+      makeBot();
+      botCount += 1;
+    }
   }
 
   function onConnect(socket) {
@@ -606,6 +539,9 @@ export function createGame({ io, questionData }) {
     });
 
     socket.on("disconnect", () => {
+      if (p.size > 1) {
+        recordGameOver({ victim: p, eater: null });
+      }
       players.delete(socket.id);
       emitRanking();
     });
