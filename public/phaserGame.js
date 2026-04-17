@@ -376,7 +376,9 @@ export function createGameClient({ mountId, socket, ui }) {
       if (!dying) {
         ent.emojiText.setText(emojiForPlayer(p.id, p.size, isMe));
         ent.emojiText.setFontSize(`${Math.round(18 + p.size * 2)}px`);
-        const alpha = Date.now() < p.shieldUntil ? 0.55 : 0.9;
+        const penalized = now < (p.frozenUntil ?? 0);
+        const shielded = now < p.shieldUntil;
+        const alpha = penalized ? 0.3 + 0.2 * Math.sin(now / 150) : shielded ? 0.55 : 0.9;
         ent.emojiText.setAlpha(alpha);
         ent.emojiText.setPosition(p.x, p.y);
         ent.nameText.setText(p.name);

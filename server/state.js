@@ -205,12 +205,23 @@ export function createGame({ io, questionData }) {
         p.divBasicTier = clamp(p.divBasicTier - (1 + extraDown), min, max);
       }
       spawnFood("remedial", { x: p.x, y: p.y });
+      // 오답/기권 시 5초간 이동 불가 + 무적 패널티
+      const penaltyMs = 5000;
+      const penaltyEnd = nowMs() + penaltyMs;
+      p.frozenUntil = penaltyEnd;
+      p.shieldUntil = penaltyEnd;
+      p.pvpUntil = penaltyEnd;
+      p.vx = 0;
+      p.vy = 0;
+      safeEmit(socket, "penalty", { until: penaltyEnd, durationMs: penaltyMs });
       safeEmit(socket, "answer_result", { ok: false, correctAnswer: pq.q.answer });
     }
 
     p.pendingQuestion = null;
-    p.shieldUntil = nowMs() + 800;
-    p.pvpUntil = p.shieldUntil;
+    if (correct) {
+      p.shieldUntil = nowMs() + 800;
+      p.pvpUntil = p.shieldUntil;
+    }
   }
 
   function botThinkAndAct(p, t) {
@@ -236,6 +247,7 @@ export function createGame({ io, questionData }) {
         size: p.size,
         speed: p.speed,
         shieldUntil: p.shieldUntil,
+        frozenUntil: p.frozenUntil ?? 0,
         combo: p.combo
       })),
       foods: Array.from(foods.values()),
@@ -326,8 +338,7 @@ export function createGame({ io, questionData }) {
       const sp = speedForSize(p.size, p.baseSpeed);
       p.speed = sp;
       if (p.bot) botThinkAndAct(p, t);
-      // 문제 풀이 중에는 서버에서도 완전히 정지(마지막 입력 잔상 제거)
-      if (p.pendingQuestion) {
+      if (p.pendingQuestion || t < (p.frozenUntil ?? 0)) {
         p.vx = 0;
         p.vy = 0;
       }
@@ -438,6 +449,7 @@ export function createGame({ io, questionData }) {
       // 처음 탄생한 물고기: 3초간 잡아먹지도/먹히지도 않게
       shieldUntil: bornAt + 3000,
       pvpUntil: bornAt + 3000,
+      frozenUntil: 0,
       pendingQuestion: null,
       streak: 0,
       mulWrongStreak: 0,
@@ -464,8 +476,8 @@ export function createGame({ io, questionData }) {
     });
 
     socket.on("input", ({ vx, vy }) => {
-      // 문제 풀이 중에는 이동 입력을 받지 않는다(클라 버그/지연 대비)
       if (p.pendingQuestion) return;
+      if (nowMs() < (p.frozenUntil ?? 0)) return;
       p.vx = clamp(Number(vx) || 0, -1, 1);
       p.vy = clamp(Number(vy) || 0, -1, 1);
     });
@@ -474,6 +486,7 @@ export function createGame({ io, questionData }) {
       const f = foods.get(foodId);
       if (!f) return;
       if (p.pendingQuestion) return;
+      if (nowMs() < (p.frozenUntil ?? 0)) return;
 
       const r = radiusForSize(p.size) + f.r + 4;
       if (dist2(p, f) > r * r) return;

@@ -130,6 +130,22 @@ socket.on("hint", ({ tooltip, extraHint }) => {
   ui?.toast([tooltip, extraHint].filter(Boolean).join(" "));
 });
 
+socket.on("penalty", ({ durationMs }) => {
+  game?.setControlsEnabled?.(false);
+  const endAt = Date.now() + durationMs;
+  const tick = () => {
+    const left = Math.ceil((endAt - Date.now()) / 1000);
+    if (left <= 0) {
+      game?.setControlsEnabled?.(true);
+      ui?.toast("다시 움직일 수 있어!");
+      return;
+    }
+    ui?.toast(`오답 패널티! ${left}초 후 이동 가능`);
+    window.setTimeout(tick, 500);
+  };
+  tick();
+});
+
 socket.on("toast", ({ msg, to }) => {
   const self = ui?.getSelfId?.();
   if (to && to !== self) return;
