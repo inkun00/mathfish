@@ -367,44 +367,43 @@ export function createGameClient({ mountId, socket, ui }) {
     const seenPlayers = new Set();
     for (const p of snap.players) {
       seenPlayers.add(p.id);
-      const r = radiusForSize(p.size);
       const isMe = p.id === selfId;
-      const alpha = Date.now() < p.shieldUntil ? 0.55 : 0.9;
       const ent = ensurePlayerEnt(scene, p);
-      ent.emojiText.setText(emojiForPlayer(p.id, p.size, isMe));
-      ent.emojiText.setFontSize(`${Math.round(18 + p.size * 2)}px`);
       const fr = frozen.get(p.id);
       const now = Date.now();
-      if (fr && now < fr.untilMs) ent.emojiText.setPosition(fr.x, fr.y);
-      else ent.emojiText.setPosition(p.x, p.y);
-      ent.emojiText.setAlpha(alpha);
+      const dying = fr && now < fr.untilMs;
 
-      ent.nameText.setText(p.name);
-      const nameY = (fr && now < fr.untilMs ? fr.y : p.y) - Math.max(12, r * 0.65);
-      const nameX = fr && now < fr.untilMs ? fr.x : p.x;
-      ent.nameText.setPosition(nameX, nameY);
+      if (!dying) {
+        ent.emojiText.setText(emojiForPlayer(p.id, p.size, isMe));
+        ent.emojiText.setFontSize(`${Math.round(18 + p.size * 2)}px`);
+        const alpha = Date.now() < p.shieldUntil ? 0.55 : 0.9;
+        ent.emojiText.setAlpha(alpha);
+        ent.emojiText.setPosition(p.x, p.y);
+        ent.nameText.setText(p.name);
+        ent.nameText.setPosition(p.x, p.y - Math.max(12, radiusForSize(p.size) * 0.65));
+      } else {
+        ent.emojiText.setPosition(fr.x, fr.y);
+        ent.nameText.setPosition(fr.x, fr.y - Math.max(12, radiusForSize(p.size) * 0.65));
+      }
 
-      // LV는 "내 캐릭터" 아래에 붙여서 따라다니게 표시
-      if (ent.lvText) {
-        const show = isMe;
-        ent.lvText.setVisible(show);
-        if (show) {
-          ent.lvText.setText(`LV ${Math.max(1, Number(p.size) || 1)}`);
-          // 스프라이트(이모지 텍스트) 실제 바닥선 바로 아래에 붙인다.
-          // (origin/폰트사이즈 변경에도 안정적으로 따라가게)
-          const bb = ent.emojiText.getBounds();
-          ent.lvText.setPosition(bb.centerX, bb.bottom + 2);
+      if (!dying) {
+        if (ent.lvText) {
+          const show = isMe;
+          ent.lvText.setVisible(show);
+          if (show) {
+            ent.lvText.setText(`LV ${Math.max(1, Number(p.size) || 1)}`);
+            const bb = ent.emojiText.getBounds();
+            ent.lvText.setPosition(bb.centerX, bb.bottom + 2);
+          }
         }
-      }
 
-      // 이동 방향에 따라 좌우 반전(자연스러운 헤엄 느낌)
-      const dx = p.x - (ent.lastX ?? p.x);
-      if (Math.abs(dx) > 0.5) {
-        // 이모지 기본 방향과 좌우가 반대로 느껴져 반전 부호를 뒤집는다
-        const dir = dx < 0 ? 1 : -1;
-        ent.emojiText.setScale(dir, 1);
+        const dx = p.x - (ent.lastX ?? p.x);
+        if (Math.abs(dx) > 0.5) {
+          const dir = dx < 0 ? 1 : -1;
+          ent.emojiText.setScale(dir, 1);
+        }
+        ent.lastX = p.x;
       }
-      ent.lastX = fr && now < fr.untilMs ? fr.x : p.x;
     }
     for (const [id, ent] of entities.players.entries()) {
       if (seenPlayers.has(id)) continue;
