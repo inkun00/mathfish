@@ -627,14 +627,31 @@ export function createUI({ socket, els, onQuestionOpen, onQuestionClose, onTurtl
     const { q, uiState } = openQuestion;
     let answer = null;
 
-    if (q.ui?.type === "choice") answer = uiState.selected.value;
+    if (q.ui?.type === "choice") {
+      answer = uiState.selected.value;
+      if (answer == null) {
+        // 선택 없이 제출은 "기권"으로 처리
+        socket.emit("answer", { questionId: q.id, answer: undefined });
+        closeQuestion();
+        return;
+      }
+    }
     else if (typeof uiState.computeAnswer === "function") {
       answer = uiState.computeAnswer();
       if (answer === null) {
         toast("정답 칸에 답을 써줘!");
         return;
       }
-    } else answer = Number(uiState.input.value);
+    } else {
+      const raw = String(uiState.input.value ?? "").trim();
+      if (raw === "") {
+        // 빈 제출은 0으로 변환되지 않게 "기권" 처리
+        socket.emit("answer", { questionId: q.id, answer: undefined });
+        closeQuestion();
+        return;
+      }
+      answer = Number(raw);
+    }
 
     socket.emit("answer", { questionId: q.id, answer });
     closeQuestion();
