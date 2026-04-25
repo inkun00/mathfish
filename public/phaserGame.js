@@ -91,12 +91,14 @@ export function createGameClient({ mountId, socket, ui }) {
       super("main");
       this.cursors = null;
       this.keys = null;
+      this.space = null;
       this.ocean = null;
       this.surface = null;
       this.seabed = null;
       this.depthOverlay = null;
       this.seabedDecor = [];
       this.lastInputSentAt = 0;
+      this.lastSplitAt = 0;
       this.bgScrollX = 0;
       this.surfaceScrollX = 0;
       this.seabedScrollX = 0;
@@ -106,6 +108,7 @@ export function createGameClient({ mountId, socket, ui }) {
       selfId = ui.getSelfId();
       this.cursors = this.input.keyboard.createCursorKeys();
       this.keys = this.input.keyboard.addKeys("W,A,S,D");
+      this.space = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
       this.ensureOceanLayers();
 
@@ -244,6 +247,12 @@ export function createGameClient({ mountId, socket, ui }) {
       const t = performance.now();
 
       if (!controlsEnabled) return;
+
+      // Space: split (쿨다운 800ms)
+      if (this.space?.isDown && t - this.lastSplitAt > 800) {
+        socket.emit("split");
+        this.lastSplitAt = t;
+      }
 
       const up = this.cursors.up.isDown || this.keys.W.isDown;
       const down = this.cursors.down.isDown || this.keys.S.isDown;

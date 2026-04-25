@@ -79,6 +79,61 @@ export function createGame({ io, questionData }) {
 
   const players = new Map(); // socket.id -> player
   const foods = new Map(); // foodId -> food
+  const userGroups = new Map(); // ownerId -> { ownerId, level, xp, count }
+
+  const MAX_USER_FISH = 32;
+  const TRAIL_MAX = 220; // 20Hz 기준 약 11초
+
+  function getOrCreateGroup(ownerId, initialLevel = 1) {
+    const oid = String(ownerId ?? "");
+    if (!oid) return null;
+    const g0 = userGroups.get(oid);
+    if (g0) return g0;
+    const g = { ownerId: oid, level: Math.max(1, Number(initialLevel) || 1), xp: 0, count: 1 };
+    userGroups.set(oid, g);
+    return g;
+  }
+
+  function groupMembers(ownerId) {
+    const oid = String(ownerId ?? "");
+    const arr = [];
+    for (const p of players.values()) {
+      if (p.bot) continue;
+      if ((p.ownerId ?? p.id) === oid) arr.push(p);
+    }
+    return arr;
+  }
+
+  function setGroupLevel(ownerId, level) {
+    const g = getOrCreateGroup(ownerId, level);
+    if (!g) return;
+    g.level = Math.max(1, Number(level) || 1);
+    for (const m of groupMembers(ownerId)) m.size = g.level;
+  }
+
+  function addGroupXp(ownerId, amount) {
+    const g = getOrCreateGroup(ownerId, 1);
+    if (!g) return;
+    const add = Number(amount) || 0;
+    if (!Number.isFinite(add) || add <= 0) return;
+    g.xp += add;
+    const need = Math.max(1, Number(g.count) || 1);
+    while (g.xp >= need) {
+      g.xp -= need;
+      g.level += 1;
+    }
+    for (const m of groupMembers(ownerId)) m.size = g.level;
+  }
+
+  function applyGroupPenalty(ownerId, { untilMs }) {
+    for (const m of groupMembers(ownerId)) {
+      m.frozenUntil = Math.max(m.frozenUntil ?? 0, untilMs);
+      m.shieldUntil = Math.max(m.shieldUntil ?? 0, untilMs);
+      m.pvpUntil = Math.max(m.pvpUntil ?? 0, untilMs);
+      m.vx = 0;
+      m.vy = 0;
+    }
+  }
 
   // 게임 오버(포식) 시점의 최고 기록 리더보드(서버 메모리)
   // - 의도: "죽었을 때의 크기"를 기록해 학습/플레이 성취감을 남긴다.
@@ -151,9 +206,7 @@ export function createGame({ io, questionData }) {
       p.combo += 1;
       if (pq.q.domain === "mul") p.mulWrongStreak = 0;
       if (pq.q.domain === "div") p.divWrongStreak = 0;
-      if (!p.bot) {
-        p.size += 1;
-      }
+      if (!p.bot) addGroupXp(p.ownerId ?? p.id, 1);
       p.baseSpeed = clamp(p.baseSpeed + 0.02, 1.2, 2.2);
       if (pq.q.domain === "mul" && (pq.q.meta?.kind === "vertical_mul" || pq.q.meta?.kind === "mul_with_zeros")) {
         const { min, max } = questionData.mulBasicTier;
@@ -208,11 +261,7 @@ export function createGame({ io, questionData }) {
       // 오답/기권 시 5초간 이동 불가 + 무적 패널티
       const penaltyMs = 5000;
       const penaltyEnd = nowMs() + penaltyMs;
-      p.frozenUntil = penaltyEnd;
-      p.shieldUntil = penaltyEnd;
-      p.pvpUntil = penaltyEnd;
-      p.vx = 0;
-      p.vy = 0;
+      applyGroupPenalty(p.ownerId ?? p.id, { untilMs: penaltyEnd });
       safeEmit(socket, "penalty", { until: penaltyEnd, durationMs: penaltyMs });
       safeEmit(socket, "answer_result", { ok: false, correctAnswer: pq.q.answer });
     }
@@ -338,12 +387,30 @@ export function createGame({ io, questionData }) {
       const sp = speedForSize(p.size, p.baseSpeed);
       p.speed = sp;
       if (p.bot) botThinkAndAct(p, t);
+      // follower는 리더 trail을 따라가며, penalty/pending 중에는 정지
+      if (p.follow) {
+        const leader = players.get(p.follow.leaderId);
+        const lag = Math.max(1, Number(p.follow.lagSteps) || 1);
+        if (leader?.trail?.length) {
+          const idx = Math.max(0, leader.trail.length - 1 - lag);
+          const target = leader.trail[idx];
+          const dx = (target?.x ?? leader.x) - p.x;
+          const dy = (target?.y ?? leader.y) - p.y;
+          const mag = Math.hypot(dx, dy) || 1;
+          p.vx = clamp(dx / mag, -1, 1);
+          p.vy = clamp(dy / mag, -1, 1);
+        }
+      }
       if (p.pendingQuestion || t < (p.frozenUntil ?? 0)) {
         p.vx = 0;
         p.vy = 0;
       }
       p.x = clamp(p.x + p.vx * sp * 8 * MOVE_SCALE, 20, WORLD.w - 20);
       p.y = clamp(p.y + p.vy * sp * 8 * MOVE_SCALE, 20, WORLD.h - 20);
+      if (p.trail) {
+        p.trail.push({ x: p.x, y: p.y });
+        if (p.trail.length > TRAIL_MAX) p.trail.splice(0, p.trail.length - TRAIL_MAX);
+      }
     }
 
     // PvP collisions
@@ -375,9 +442,7 @@ export function createGame({ io, questionData }) {
           const top = ranked.slice(0, 10);
 
           const gain = Math.max(1, Math.floor(smaller.size / 2));
-          if (!bigger.bot) {
-            bigger.size += gain;
-          }
+          if (!bigger.bot) addGroupXp(bigger.ownerId ?? bigger.id, gain);
           bigger.combo += 1;
           io.emit("player_eaten", {
             eaterId: bigger.id,
@@ -406,7 +471,14 @@ export function createGame({ io, questionData }) {
       p.bot.fixedSize = newSize;
       p.baseSpeed = 1.3;
     } else {
-      p.size = 1;
+      // 유저 물고기는 "죽으면 분열 상태가 풀리는" 대신,
+      // 현재 그룹 레벨을 유지하고 리스폰(게임성). 단, follower는 완전 제거.
+      if (p.follow) {
+        players.delete(p.id);
+        return;
+      }
+      const g = getOrCreateGroup(p.ownerId ?? p.id, p.size);
+      p.size = g?.level ?? 1;
       p.baseSpeed = 1.6;
     }
     p.combo = 0;
@@ -434,14 +506,17 @@ export function createGame({ io, questionData }) {
 
   function onConnect(socket) {
     const bornAt = nowMs();
+    const ownerId = socket.id;
+    const g = getOrCreateGroup(ownerId, 1);
     const p = {
       id: socket.id,
+      ownerId,
       name: `물고기${socket.id.slice(0, 4)}`,
       x: rand(60, WORLD.w - 60),
       y: rand(60, WORLD.h - 60),
       vx: 0,
       vy: 0,
-      size: 1,
+      size: g?.level ?? 1,
       growBank: 0,
       combo: 0,
       baseSpeed: 1.6,
@@ -459,6 +534,7 @@ export function createGame({ io, questionData }) {
       avgSolveMs: 2200,
       bias: { remedialNext: false, remedialNextKey: null }
     };
+    p.trail = [];
     players.set(socket.id, p);
 
     socket.emit("hello", {
@@ -483,6 +559,8 @@ export function createGame({ io, questionData }) {
     });
 
     socket.on("eat_food", ({ foodId }) => {
+      // follower는 문제를 풀 수 없게(UI/동기화 단순화)
+      if (p.follow) return;
       const f = foods.get(foodId);
       if (!f) return;
       if (p.pendingQuestion) return;
@@ -544,18 +622,72 @@ export function createGame({ io, questionData }) {
       }
 
       turtleEvent.answeredBy = p.id;
-      p.size += 4;
+      addGroupXp(p.ownerId ?? p.id, 4);
       p.baseSpeed = clamp(p.baseSpeed + 0.08, 1.2, 2.2);
       io.emit("toast", { msg: `${p.name}가 거북이를 구출했다! (+자석 효과)` });
       emitRanking();
       endTurtleEvent();
     });
 
+    socket.on("split", () => {
+      const g2 = getOrCreateGroup(ownerId, p.size);
+      if (!g2) return;
+      const curCount = Math.max(1, Number(g2.count) || 1);
+      const nextCount = Math.min(MAX_USER_FISH, curCount * 2);
+      if (nextCount === curCount) return;
+
+      const nextLevel = Math.max(1, Math.floor((Number(g2.level) || p.size || 1) / 2));
+      g2.count = nextCount;
+      g2.xp = 0;
+      setGroupLevel(ownerId, nextLevel);
+
+      const existing = groupMembers(ownerId);
+      const needAdd = nextCount - existing.length;
+      // leader는 socket.id. follower는 leader trail을 lag로 따라감.
+      let k = 0;
+      while (k < needAdd) {
+        const id = makeId("fish");
+        const followerIdx = existing.length + k; // 0=leader, 1..N-1=follower
+        const lagSteps = 10 * followerIdx;
+        const fp = {
+          id,
+          ownerId,
+          name: p.name,
+          x: p.x,
+          y: p.y,
+          vx: 0,
+          vy: 0,
+          size: nextLevel,
+          combo: 0,
+          baseSpeed: 1.6,
+          speed: 1.6,
+          shieldUntil: nowMs() + 800,
+          pvpUntil: nowMs() + 800,
+          frozenUntil: 0,
+          pendingQuestion: null,
+          streak: 0,
+          mulWrongStreak: 0,
+          divWrongStreak: 0,
+          mulBasicTier: p.mulBasicTier,
+          divBasicTier: p.divBasicTier,
+          avgSolveMs: p.avgSolveMs,
+          bias: { remedialNext: false, remedialNextKey: null },
+          follow: { leaderId: ownerId, lagSteps }
+        };
+        players.set(id, fp);
+        k += 1;
+      }
+      emitRanking();
+      safeEmit(socket, "toast", { msg: `분열! (${nextCount}마리, LV ${nextLevel})`, to: ownerId });
+    });
+
     socket.on("disconnect", () => {
       if (p.size > 1) {
         recordGameOver({ victim: p, eater: null });
       }
-      players.delete(socket.id);
+      // 그룹 물고기 전부 제거
+      for (const m of groupMembers(ownerId)) players.delete(m.id);
+      userGroups.delete(ownerId);
       emitRanking();
     });
   }
