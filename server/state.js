@@ -159,6 +159,8 @@ export function createGame({ io, questionData }) {
   const userGroups = new Map(); // ownerId -> { ownerId, level, xp, count }
 
   const MAX_USER_FISH = 32;
+  /** 플레이어 그룹 대장의 성장 한도. 이보다 높아지면 성장하지 않고 새끼를 낳거나 새끼 레벨을 올린다. */
+  const MAX_GROUP_LEVEL = 50;
   const TRAIL_MAX = 220; // 20Hz 기준 약 11초
 
   function getOrCreateGroup(ownerId, initialLevel = 1) {
@@ -166,7 +168,12 @@ export function createGame({ io, questionData }) {
     if (!oid) return null;
     const g0 = userGroups.get(oid);
     if (g0) return g0;
-    const g = { ownerId: oid, level: Math.max(1, Number(initialLevel) || 1), xp: 0, count: 1 };
+    const g = {
+      ownerId: oid,
+      level: Math.min(MAX_GROUP_LEVEL, Math.max(1, Number(initialLevel) || 1)),
+      xp: 0,
+      count: 1
+    };
     userGroups.set(oid, g);
     return g;
   }
@@ -181,11 +188,112 @@ export function createGame({ io, questionData }) {
     return arr;
   }
 
+  /** 리더는 g.level. 대장 LV 50 미만이면 새끼도 대장과 동일 크기로 맞춤. 50 도달 후에만 새끼별 offspringLevel 적용 */
+  function syncGroupSizes(ownerId) {
+    const g = userGroups.get(ownerId);
+    if (!g) return;
+    const atCap = g.level >= MAX_GROUP_LEVEL;
+    for (const m of groupMembers(ownerId)) {
+      if (m.follow) {
+        if (!atCap) {
+          m.offspringLevel = g.level;
+          m.size = Math.min(MAX_GROUP_LEVEL, g.level);
+        } else {
+          const ol = Number.isFinite(m.offspringLevel) ? m.offspringLevel : g.level;
+          m.size = Math.min(MAX_GROUP_LEVEL, Math.max(1, ol));
+        }
+      } else {
+        m.size = Math.min(MAX_GROUP_LEVEL, g.level);
+      }
+    }
+  }
+
   function setGroupLevel(ownerId, level) {
     const g = getOrCreateGroup(ownerId, level);
     if (!g) return;
-    g.level = Math.max(1, Number(level) || 1);
-    for (const m of groupMembers(ownerId)) m.size = g.level;
+    const lv = Math.min(MAX_GROUP_LEVEL, Math.max(1, Number(level) || 1));
+    g.level = lv;
+    for (const m of groupMembers(ownerId)) {
+      if (m.follow) {
+        m.offspringLevel = lv;
+        m.size = lv;
+      } else {
+        m.size = lv;
+      }
+    }
+  }
+
+  function spawnOffspringFish(ownerId) {
+    const leader = players.get(ownerId);
+    if (!leader || leader.bot) return false;
+    const members = groupMembers(ownerId);
+    if (members.length >= MAX_USER_FISH) return false;
+
+    const g = userGroups.get(ownerId);
+    const followerIdx = members.length;
+    const lagSteps = 10 * followerIdx;
+    const id = makeId("fish");
+    const fp = {
+      id,
+      ownerId,
+      name: leader.name,
+      x: leader.x,
+      y: leader.y,
+      vx: 0,
+      vy: 0,
+      size: 1,
+      offspringLevel: 1,
+      combo: 0,
+      baseSpeed: 1.6,
+      speed: 1.6,
+      shieldUntil: nowMs() + 800,
+      pvpUntil: nowMs() + 800,
+      frozenUntil: 0,
+      pendingQuestion: null,
+      streak: 0,
+      mulWrongStreak: 0,
+      divWrongStreak: 0,
+      mulBasicTier: leader.mulBasicTier,
+      divBasicTier: leader.divBasicTier,
+      avgSolveMs: leader.avgSolveMs,
+      bias: { remedialNext: false, remedialNextKey: null },
+      follow: { leaderId: ownerId, lagSteps }
+    };
+    players.set(id, fp);
+    if (g) g.count = groupMembers(ownerId).length;
+    return true;
+  }
+
+  /** 대장 레벨이 MAX에 도달한 뒤 '레벨업 한 번'에 해당하는 성장을 새끼에게 적용. 진행 불가면 false */
+  function progressOffspringAtCap(ownerId) {
+    const leader = players.get(ownerId);
+    if (!leader || leader.bot) return false;
+
+    const members = groupMembers(ownerId);
+    const followers = members.filter((m) => m.follow);
+    if (members.length < MAX_USER_FISH) {
+      if (spawnOffspringFish(ownerId)) {
+        io.emit("toast", { to: ownerId, msg: "새끼가 태어났다! (LV 1)" });
+        emitRanking();
+        return true;
+      }
+    }
+    if (!followers.length) return false;
+
+    const target = followers
+      .slice()
+      .sort(
+        (a, b) =>
+          (Number(a.offspringLevel) || a.size || 1) - (Number(b.offspringLevel) || b.size || 1)
+      )[0];
+    const cur = Math.max(1, Number(target.offspringLevel) || target.size || 1);
+    if (cur >= MAX_GROUP_LEVEL) return false;
+    const next = Math.min(MAX_GROUP_LEVEL, cur + 1);
+    target.offspringLevel = next;
+    target.size = next;
+    io.emit("toast", { to: ownerId, msg: `새끼 성장! (LV ${next})` });
+    emitRanking();
+    return true;
   }
 
   function addGroupXp(ownerId, amount) {
@@ -194,12 +302,19 @@ export function createGame({ io, questionData }) {
     const add = Number(amount) || 0;
     if (!Number.isFinite(add) || add <= 0) return;
     g.xp += add;
-    const need = Math.max(1, Number(g.count) || 1);
-    while (g.xp >= need) {
-      g.xp -= need;
-      g.level += 1;
+    while (true) {
+      const need = Math.max(1, groupMembers(ownerId).length);
+      if (g.xp < need) break;
+      if (g.level < MAX_GROUP_LEVEL) {
+        g.xp -= need;
+        g.level += 1;
+      } else {
+        const progressed = progressOffspringAtCap(ownerId);
+        if (!progressed) break;
+        g.xp -= need;
+      }
     }
-    for (const m of groupMembers(ownerId)) m.size = g.level;
+    syncGroupSizes(ownerId);
   }
 
   function applyGroupPenalty(ownerId, { untilMs }) {
@@ -557,7 +672,7 @@ export function createGame({ io, questionData }) {
         return;
       }
       const g = getOrCreateGroup(p.ownerId ?? p.id, p.size);
-      p.size = g?.level ?? 1;
+      p.size = Math.min(MAX_GROUP_LEVEL, g?.level ?? 1);
       p.baseSpeed = 1.6;
     }
     p.combo = 0;
@@ -595,7 +710,7 @@ export function createGame({ io, questionData }) {
       y: rand(60, WORLD.h - 60),
       vx: 0,
       vy: 0,
-      size: g?.level ?? 1,
+      size: Math.min(MAX_GROUP_LEVEL, g?.level ?? 1),
       growBank: 0,
       combo: 0,
       baseSpeed: 1.6,
@@ -738,7 +853,8 @@ export function createGame({ io, questionData }) {
           y: p.y,
           vx: 0,
           vy: 0,
-          size: nextLevel,
+          size: Math.min(MAX_GROUP_LEVEL, nextLevel),
+          offspringLevel: Math.min(MAX_GROUP_LEVEL, nextLevel),
           combo: 0,
           baseSpeed: 1.6,
           speed: 1.6,
