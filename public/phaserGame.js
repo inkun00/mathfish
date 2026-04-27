@@ -8,8 +8,19 @@ function dist2(a, b) {
   return dx * dx + dy * dy;
 }
 
-function radiusForSize(size) {
-  return 14 + size * 4;
+function fontPxForPlayerSize(size) {
+  return Math.round(18 + Math.max(1, Number(size) || 1) * 2);
+}
+
+function foodFontPx(kind) {
+  if (kind === "advanced") return 26;
+  if (kind === "remedial") return 22;
+  return 20;
+}
+
+function rectsTouchOrOverlap(a, b) {
+  // Axis-aligned bounding boxes. "Touch" counts as collision (<= / >=).
+  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
 }
 
 function hashToIndex(str, mod) {
@@ -300,9 +311,19 @@ export function createGameClient({ mountId, socket, ui }) {
       const me = lastState.players.find((p) => p.id === selfId);
       if (!me) return;
 
-      const rr = radiusForSize(me.size) + 12;
+      const scene = phaser.scene.getScene("main");
+      if (!scene) return;
+
+      const meEnt = entities.players.get(selfId);
+      if (!meEnt?.emojiText) return;
+      // 텍스트는 폰트 사이즈가 바뀌므로, bounds 기반이 가장 정확하다.
+      const meBounds = meEnt.emojiText.getBounds();
+
       for (const f of lastState.foods) {
-        if (dist2(me, f) <= rr * rr) {
+        const fEnt = entities.foods.get(f.id);
+        if (!fEnt?.emojiText) continue;
+        const foodBounds = fEnt.emojiText.getBounds();
+        if (rectsTouchOrOverlap(meBounds, foodBounds)) {
           socket.emit("eat_food", { foodId: f.id });
         }
       }
@@ -384,17 +405,18 @@ export function createGameClient({ mountId, socket, ui }) {
 
       if (!dying) {
         ent.emojiText.setText(emojiForPlayer(p.id, p.size, isMe));
-        ent.emojiText.setFontSize(`${Math.round(18 + p.size * 2)}px`);
+        ent.emojiText.setFontSize(`${fontPxForPlayerSize(p.size)}px`);
         const penalized = now < (p.frozenUntil ?? 0);
         const shielded = now < p.shieldUntil;
         const alpha = penalized ? 0.3 + 0.2 * Math.sin(now / 150) : shielded ? 0.55 : 0.9;
         ent.emojiText.setAlpha(alpha);
         ent.emojiText.setPosition(p.x, p.y);
         ent.nameText.setText(p.name);
-        ent.nameText.setPosition(p.x, p.y - Math.max(12, radiusForSize(p.size) * 0.65));
+        // 시각적인 배치만: 히트박스 판정은 bounds 기반으로 처리
+        ent.nameText.setPosition(p.x, p.y - Math.max(12, fontPxForPlayerSize(p.size) * 0.65));
       } else {
         ent.emojiText.setPosition(fr.x, fr.y);
-        ent.nameText.setPosition(fr.x, fr.y - Math.max(12, radiusForSize(p.size) * 0.65));
+        ent.nameText.setPosition(fr.x, fr.y - Math.max(12, fontPxForPlayerSize(p.size) * 0.65));
       }
 
       if (!dying) {
@@ -430,7 +452,7 @@ export function createGameClient({ mountId, socket, ui }) {
       seenFoods.add(f.id);
       const ent = ensureFoodEnt(scene, f);
       ent.emojiText.setText(emojiForFood(f.kind));
-      ent.emojiText.setFontSize(f.kind === "advanced" ? "26px" : f.kind === "remedial" ? "22px" : "20px");
+      ent.emojiText.setFontSize(`${foodFontPx(f.kind)}px`);
       ent.emojiText.setPosition(f.x, f.y);
     }
     for (const [id, ent] of entities.foods.entries()) {

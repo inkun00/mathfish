@@ -24,6 +24,33 @@ function radiusForSize(size) {
   return 14 + size * 4;
 }
 
+function fontPxForPlayerSize(size) {
+  return Math.round(18 + Math.max(1, Number(size) || 1) * 2);
+}
+
+function foodFontPx(kind) {
+  if (kind === "advanced") return 26;
+  if (kind === "remedial") return 22;
+  return 20;
+}
+
+function rectsTouchOrOverlap(a, b) {
+  // Axis-aligned bounding boxes. "Touch" counts as collision (<= / >=).
+  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+}
+
+function foodBoundsAtServer(f) {
+  const fp = foodFontPx(f?.kind);
+  const half = fp / 2;
+  return { left: f.x - half, right: f.x + half, top: f.y - half, bottom: f.y + half };
+}
+
+function playerBoundsAtServer(p) {
+  const fp = fontPxForPlayerSize(p?.size);
+  const half = fp / 2;
+  return { left: p.x - half, right: p.x + half, top: p.y - half, bottom: p.y + half };
+}
+
 function speedForSize(size, baseSpeed) {
   const slow = Math.max(0, size - 1) * 0.05;
   return Math.max(0.6, baseSpeed - slow);
@@ -566,8 +593,10 @@ export function createGame({ io, questionData }) {
       if (p.pendingQuestion) return;
       if (nowMs() < (p.frozenUntil ?? 0)) return;
 
-      const r = radiusForSize(p.size) + f.r + 4;
-      if (dist2(p, f) > r * r) return;
+      // "이모지끼리 닿을 때만" 먹기 판정: bounds 기반(반경/마진 없음)
+      const pb = playerBoundsAtServer(p);
+      const fb = foodBoundsAtServer(f);
+      if (!rectsTouchOrOverlap(pb, fb)) return;
 
       foods.delete(foodId);
       io.emit("food_despawn", { id: foodId });
