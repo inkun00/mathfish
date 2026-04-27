@@ -351,7 +351,7 @@ export function createGame({ io, questionData }) {
   }
 
   function ensureFoods() {
-    const desired = 90;
+    const desired = 9;
     if (foods.size >= desired) return;
     const deficit = desired - foods.size;
     for (let i = 0; i < deficit; i += 1) {
