@@ -23,6 +23,28 @@ function rectsTouchOrOverlap(a, b) {
   return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
 }
 
+function insetRect(r, inset) {
+  const ins = Math.max(0, Number(inset) || 0);
+  const left = r.left + ins;
+  const right = r.right - ins;
+  const top = r.top + ins;
+  const bottom = r.bottom - ins;
+  // 너무 줄이면 역전될 수 있으니 최소 면적 유지
+  if (right <= left || bottom <= top) return r;
+  return { left, right, top, bottom };
+}
+
+function tightEmojiBounds(textObj) {
+  // Phaser Text bounds는 폰트의 line-height/여백을 포함해서 실제 이모지 실체보다 크게 잡히는 경우가 많다.
+  // 특히 크기가 커질수록 "닿기 전 먹힘"이 심해져서, bounds를 크기에 비례해 안쪽으로 줄여 타이트 히트박스로 사용한다.
+  const b = textObj.getBounds();
+  const w = Math.max(1, b.width);
+  const h = Math.max(1, b.height);
+  const base = Math.min(w, h);
+  const inset = base * 0.30;
+  return insetRect(b, inset);
+}
+
 function hashToIndex(str, mod) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i += 1) {
@@ -317,12 +339,12 @@ export function createGameClient({ mountId, socket, ui }) {
       const meEnt = entities.players.get(selfId);
       if (!meEnt?.emojiText) return;
       // 텍스트는 폰트 사이즈가 바뀌므로, bounds 기반이 가장 정확하다.
-      const meBounds = meEnt.emojiText.getBounds();
+      const meBounds = tightEmojiBounds(meEnt.emojiText);
 
       for (const f of lastState.foods) {
         const fEnt = entities.foods.get(f.id);
         if (!fEnt?.emojiText) continue;
-        const foodBounds = fEnt.emojiText.getBounds();
+        const foodBounds = tightEmojiBounds(fEnt.emojiText);
         if (rectsTouchOrOverlap(meBounds, foodBounds)) {
           socket.emit("eat_food", { foodId: f.id });
         }

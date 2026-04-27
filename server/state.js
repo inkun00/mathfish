@@ -39,16 +39,36 @@ function rectsTouchOrOverlap(a, b) {
   return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
 }
 
+function insetRect(r, inset) {
+  const ins = Math.max(0, Number(inset) || 0);
+  const left = r.left + ins;
+  const right = r.right - ins;
+  const top = r.top + ins;
+  const bottom = r.bottom - ins;
+  if (right <= left || bottom <= top) return r;
+  return { left, right, top, bottom };
+}
+
+function tightServerBounds(r) {
+  // 서버는 실제 glyph bounds를 알 수 없으니, 폰트 크기 기반 사각형을 "타이트"하게 줄여서
+  // 클라이언트에서 보이는 이모지 실체에 더 가깝게 맞춘다.
+  const w = Math.max(1, r.right - r.left);
+  const h = Math.max(1, r.bottom - r.top);
+  const base = Math.min(w, h);
+  const inset = base * 0.30;
+  return insetRect(r, inset);
+}
+
 function foodBoundsAtServer(f) {
   const fp = foodFontPx(f?.kind);
   const half = fp / 2;
-  return { left: f.x - half, right: f.x + half, top: f.y - half, bottom: f.y + half };
+  return tightServerBounds({ left: f.x - half, right: f.x + half, top: f.y - half, bottom: f.y + half });
 }
 
 function playerBoundsAtServer(p) {
   const fp = fontPxForPlayerSize(p?.size);
   const half = fp / 2;
-  return { left: p.x - half, right: p.x + half, top: p.y - half, bottom: p.y + half };
+  return tightServerBounds({ left: p.x - half, right: p.x + half, top: p.y - half, bottom: p.y + half });
 }
 
 function speedForSize(size, baseSpeed) {
