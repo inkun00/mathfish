@@ -23,6 +23,11 @@ function rectsTouchOrOverlap(a, b) {
   return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
 }
 
+function expandRect(r, pad) {
+  const p = Math.max(0, Number(pad) || 0);
+  return { left: r.left - p, right: r.right + p, top: r.top - p, bottom: r.bottom + p, width: r.width, height: r.height };
+}
+
 function insetRect(r, inset) {
   const ins = Math.max(0, Number(inset) || 0);
   const left = r.left + ins;
@@ -41,8 +46,10 @@ function tightEmojiBounds(textObj) {
   const w = Math.max(1, b.width);
   const h = Math.max(1, b.height);
   const base = Math.min(w, h);
-  const inset = base * 0.30;
-  return insetRect(b, inset);
+  const inset = base * 0.18;
+  // 완전 접촉 판정이 너무 빡빡해지는 걸 방지하기 위한 아주 작은 오차 허용
+  const eps = Math.max(1, base * 0.02);
+  return expandRect(insetRect(b, inset), eps);
 }
 
 function hashToIndex(str, mod) {
