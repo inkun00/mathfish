@@ -40,6 +40,7 @@ const socket = serverUrl ? window.io(serverUrl) : window.io();
 
 let ui = null;
 let game = null;
+let didInitialStart = false;
 
 try {
   ui = createUI({
@@ -96,13 +97,33 @@ try {
 socket.on("hello", ({ selfId, world, name }) => {
   ui?.setMe({ selfId, name });
   game?.setWorld(world);
-  game?.setControlsEnabled?.(false);
-  ui
-    ?.promptName?.({ title: "이름 설정", cta: "시작" })
-    ?.then(() => {
-      ui?.startCountdown?.(5);
-      window.setTimeout(() => game?.setControlsEnabled?.(true), 5000);
-    });
+  // 재연결(reconnect)로 hello가 다시 올 수 있다. 그때마다 "게임 시작" 시퀀스를 반복하면
+  // 플레이 중에도 계속 시작 오버레이/이름 모달이 떠서 "자꾸 게임이 시작"되는 것처럼 보인다.
+  const saved = window.localStorage?.getItem?.("mathfish_name");
+  if (saved) socket.emit("set_name", { name: saved });
+
+  if (!didInitialStart) {
+    didInitialStart = true;
+    game?.setControlsEnabled?.(false);
+    ui
+      ?.promptName?.({ title: "이름 설정", cta: "시작" })
+      ?.then(() => {
+        ui?.startCountdown?.(5);
+        window.setTimeout(() => game?.setControlsEnabled?.(true), 5000);
+      });
+    return;
+  }
+
+  ui?.toast?.("재연결됨");
+  game?.setControlsEnabled?.(true);
+});
+
+socket.on("connect_error", (err) => {
+  ui?.toast?.(`연결 오류: ${err?.message || err}`);
+});
+
+socket.on("disconnect", (reason) => {
+  ui?.toast?.(`연결 끊김: ${reason || "unknown"}`);
 });
 
 socket.on("state", (snap) => {

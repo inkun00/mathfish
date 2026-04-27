@@ -120,6 +120,7 @@ export function createGameClient({ mountId, socket, ui }) {
   let lastState = null;
   let controlsEnabled = true;
   const frozen = new Map(); // playerId -> { untilMs, x, y }
+  const eatCooldown = new Map(); // foodId -> lastEmitAtMs
 
   const entities = {
     players: new Map(), // id -> { emojiText, nameText, lvText, lastX }
@@ -353,6 +354,10 @@ export function createGameClient({ mountId, socket, ui }) {
         if (!fEnt?.emojiText) continue;
         const foodBounds = tightEmojiBounds(fEnt.emojiText);
         if (rectsTouchOrOverlap(meBounds, foodBounds)) {
+          const t = Date.now();
+          const prev = eatCooldown.get(f.id) ?? 0;
+          if (t - prev < 250) continue;
+          eatCooldown.set(f.id, t);
           socket.emit("eat_food", { foodId: f.id });
         }
       }
@@ -509,6 +514,7 @@ export function createGameClient({ mountId, socket, ui }) {
     if (!ent) return;
     ent.emojiText.destroy();
     entities.foods.delete(id);
+    eatCooldown.delete(id);
   }
 
   function onPlayerRespawn({ id }) {

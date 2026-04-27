@@ -93,6 +93,30 @@ function makeFood({ kind, x, y, questionKey }) {
   };
 }
 
+function spawnPointFarFrom({ world, from, minDist = 600, tries = 24 }) {
+  const fx = Number(from?.x);
+  const fy = Number(from?.y);
+  const d2min = (Number(minDist) || 0) ** 2;
+  // from이 없거나 이상하면 그냥 랜덤
+  if (!Number.isFinite(fx) || !Number.isFinite(fy) || d2min <= 0) {
+    return { x: rand(40, world.w - 40), y: rand(40, world.h - 40) };
+  }
+
+  let best = null;
+  let bestD2 = -1;
+  for (let i = 0; i < tries; i += 1) {
+    const x = rand(40, world.w - 40);
+    const y = rand(40, world.h - 40);
+    const d2 = dist2({ x, y }, { x: fx, y: fy });
+    if (d2 >= d2min) return { x, y };
+    if (d2 > bestD2) {
+      bestD2 = d2;
+      best = { x, y };
+    }
+  }
+  return best ?? { x: rand(40, world.w - 40), y: rand(40, world.h - 40) };
+}
+
 function pickFoodQuestionKey({ kind, questionData }) {
   // 심화(자릿수 타임어택)는 비활성화
   if (kind === "advanced") return "mul_normal";
@@ -310,7 +334,10 @@ export function createGame({ io, questionData }) {
         const extraDown = clamp(Math.floor(((p.divWrongStreak ?? 1) - 1) / 2), 0, 2);
         p.divBasicTier = clamp(p.divBasicTier - (1 + extraDown), min, max);
       }
-      spawnFood("remedial", { x: p.x, y: p.y });
+      // 오답 보충 먹이는 "근처에 생겨서 바로 먹히는" 체감이 강하니, 맵의 다른 곳에 생성한다.
+      // 최소 거리 보장(가능하면) + 실패 시에도 가장 멀리 뽑힌 후보를 사용.
+      const pt = spawnPointFarFrom({ world: WORLD, from: p, minDist: 700, tries: 28 });
+      spawnFood("remedial", pt);
       // 오답/기권 시 5초간 이동 불가 + 무적 패널티
       const penaltyMs = 5000;
       const penaltyEnd = nowMs() + penaltyMs;
@@ -404,7 +431,7 @@ export function createGame({ io, questionData }) {
   }
 
   function ensureFoods() {
-    const desired = 18;
+    const desired = 30;
     if (foods.size >= desired) return;
     const deficit = desired - foods.size;
     for (let i = 0; i < deficit; i += 1) {
@@ -478,12 +505,11 @@ export function createGame({ io, questionData }) {
         // 최초 스폰/리스폰 직후: 잡아먹지도/먹히지도 않도록 양방향 PvP 잠금
         if (t < (bigger.pvpUntil ?? 0) || t < (smaller.pvpUntil ?? 0)) continue;
         if (t < smaller.shieldUntil) continue;
-        // 최대한 좁은 포식 반경: 작은 물고기가 큰 물고기 안에 거의 "들어가야" 포식
-        // (내접 접촉 기준) 거리 <= (Rb - Rs)
-        const rb = radiusForSize(bigger.size);
-        const rs = radiusForSize(smaller.size);
-        const eatR = Math.max(2, rb - rs);
-        if (dist2(bigger, smaller) <= eatR * eatR) {
+        // 먹이와 동일한 기준으로: "이모지(텍스트) 실체가 닿을 때만" 포식 판정.
+        // 반경 기반은 size가 커질수록 마진이 과대해져 "근처만 가도 먹힘" 체감이 발생한다.
+        const bb = playerBoundsAtServer(bigger);
+        const sb = playerBoundsAtServer(smaller);
+        if (rectsTouchOrOverlap(bb, sb)) {
           const ranked = arr
             .slice()
             .sort((x, y) => y.size - x.size)
