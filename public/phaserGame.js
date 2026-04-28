@@ -102,6 +102,7 @@ const PLAYER_EMOJIS_BIG = ["🐬", "🐳", "🐋", "🦈", "🐊"];
 function emojiForPlayer(playerId, size, isMe) {
   // "최대한 많이": 플레이어별로 고정된(일관된) 다양한 이모지를 부여
   const id = String(playerId ?? "");
+  if (id.startsWith("hunter_")) return "👻";
   if (size >= 12) return PLAYER_EMOJIS_BIG[hashToIndex(id + ":big", PLAYER_EMOJIS_BIG.length)];
   if (size >= 6) return PLAYER_EMOJIS_FISHY[hashToIndex(id + ":mid", PLAYER_EMOJIS_FISHY.length)];
   const base = isMe ? PLAYER_EMOJIS_FISHY : PLAYER_EMOJIS_SMALL;

@@ -416,11 +416,27 @@ export function createGame({ io, questionData }) {
       }
       if (p.streak >= 3) p.streak = 0;
       safeEmit(socket, "answer_result", { ok: true, correctAnswer: pq.q.answer });
+      if (pq?.kind === "hunter") {
+        // 사냥꾼 추가문제 성공 → 사냥꾼 즉시 소멸, 3분 뒤 재등장
+        for (const hp of players.values()) {
+          if (!hp.hunter) continue;
+          if (hp.hunter.targetId === p.id) players.delete(hp.id);
+        }
+        if (hunterState.id && !players.has(hunterState.id)) hunterState.id = null;
+        hunterState.nextAtMs = nowMs() + HUNTER_INTERVAL_MS;
+      }
     } else {
       if (pq?.kind === "hunter") {
         // 사냥꾼 추가문제 실패(시간초과/기권/오답 포함) → 즉시 사망
         safeEmit(socket, "answer_result", { ok: false, correctAnswer: pq.q.answer });
         p.pendingQuestion = null;
+        // 사냥꾼이 1등을 죽였으면 즉시 사라지고, 3분 뒤에 다시 등장
+        for (const hp of players.values()) {
+          if (!hp.hunter) continue;
+          if (hp.hunter.targetId === p.id) players.delete(hp.id);
+        }
+        if (hunterState.id && !players.has(hunterState.id)) hunterState.id = null;
+        hunterState.nextAtMs = nowMs() + HUNTER_INTERVAL_MS;
         respawn(p);
         return;
       }
@@ -771,14 +787,24 @@ export function createGame({ io, questionData }) {
       p.bot.fixedSize = newSize;
       p.baseSpeed = 1.3;
     } else {
-      // 유저 물고기는 "죽으면 분열 상태가 풀리는" 대신,
-      // 현재 그룹 레벨을 유지하고 리스폰(게임성). 단, follower는 완전 제거.
+      // 유저 물고기는 죽으면 레벨 1부터 다시 시작. follower는 완전 제거.
       if (p.follow) {
         players.delete(p.id);
         return;
       }
-      const g = getOrCreateGroup(p.ownerId ?? p.id, p.size);
-      p.size = Math.min(MAX_GROUP_LEVEL, g?.level ?? 1);
+      const ownerId = p.ownerId ?? p.id;
+      // 그룹의 follower 정리
+      for (const m of groupMembers(ownerId)) {
+        if (m.id === p.id) continue;
+        players.delete(m.id);
+      }
+      const g = getOrCreateGroup(ownerId, 1);
+      if (g) {
+        g.level = 1;
+        g.xp = 0;
+        g.count = 1;
+      }
+      p.size = 1;
       p.baseSpeed = 1.6;
     }
     p.combo = 0;
