@@ -154,6 +154,12 @@ export function createGame({ io, questionData }) {
   const tickMs = Math.floor(1000 / TICK_HZ);
   const MOVE_SCALE = 0.7; // 이동 속도 30% 감소
 
+  // 1등 견제: 3분마다 "사냥 AI"가 1등만 추적 → 접촉 시 60초 추가문제.
+  // 제한 시간 내 미해결(시간초과/기권/오답)이면 즉시 사망(리스폰).
+  const HUNTER_INTERVAL_MS = 3 * 60 * 1000;
+  const HUNTER_QUESTION_MS = 60 * 1000;
+  const hunterState = { id: null, nextAtMs: nowMs() + HUNTER_INTERVAL_MS };
+
   const players = new Map(); // socket.id -> player
   const foods = new Map(); // foodId -> food
   const userGroups = new Map(); // ownerId -> { ownerId, level, xp, count }
@@ -411,6 +417,13 @@ export function createGame({ io, questionData }) {
       if (p.streak >= 3) p.streak = 0;
       safeEmit(socket, "answer_result", { ok: true, correctAnswer: pq.q.answer });
     } else {
+      if (pq?.kind === "hunter") {
+        // 사냥꾼 추가문제 실패(시간초과/기권/오답 포함) → 즉시 사망
+        safeEmit(socket, "answer_result", { ok: false, correctAnswer: pq.q.answer });
+        p.pendingQuestion = null;
+        respawn(p);
+        return;
+      }
       p.streak = 0;
       p.combo = 0;
       p.baseSpeed = clamp(p.baseSpeed - 0.08, 1.0, 2.2);
@@ -578,10 +591,59 @@ export function createGame({ io, questionData }) {
     if (!turtleEvent && t >= nextTurtleAt) startTurtleEvent();
     if (turtleEvent && t - turtleEvent.startedAt > turtleEvent.question.timeLimitMs + 3000) endTurtleEvent();
 
+    // 3분마다 1등(사람 리더) 타겟 사냥 AI 스폰
+    if (t >= (hunterState.nextAtMs ?? 0)) {
+      const leaders = Array.from(players.values()).filter(
+        (p) => !p.bot && !p.follow && (p.ownerId ?? p.id) === p.id
+      );
+      leaders.sort((a, b) => (b.size ?? 1) - (a.size ?? 1));
+      const target = leaders[0] ?? null;
+      if (target) {
+        // 기존 사냥꾼이 있으면 제거(중복 방지)
+        if (hunterState.id && players.has(hunterState.id)) players.delete(hunterState.id);
+        const spawn = spawnPointFarFrom({ world: WORLD, from: target, minDist: 900, tries: 28 });
+        const id = makeId("hunter");
+        const hp = {
+          id,
+          name: "사냥꾼",
+          x: spawn.x,
+          y: spawn.y,
+          vx: 0,
+          vy: 0,
+          size: 10,
+          combo: 0,
+          baseSpeed: 1.9,
+          speed: 1.9,
+          shieldUntil: 0,
+          pvpUntil: 0,
+          pendingQuestion: null,
+          streak: 0,
+          bot: { nextDirAt: 0, fixedSize: 10 },
+          hunter: { targetId: target.id, engaged: false }
+        };
+        players.set(id, hp);
+        hunterState.id = id;
+        io.emit("toast", { msg: `사냥꾼 출현! (${target.name}만 노린다)` });
+      }
+      hunterState.nextAtMs = t + HUNTER_INTERVAL_MS;
+    }
+
     for (const p of players.values()) {
       const sp = speedForSize(p.size, p.baseSpeed);
       p.speed = sp;
-      if (p.bot) botThinkAndAct(p, t);
+      if (p.hunter) {
+        const target = players.get(p.hunter.targetId);
+        if (target) {
+          const dx = target.x - p.x;
+          const dy = target.y - p.y;
+          const mag = Math.hypot(dx, dy) || 1;
+          p.vx = clamp(dx / mag, -1, 1);
+          p.vy = clamp(dy / mag, -1, 1);
+        } else {
+          p.vx = 0;
+          p.vy = 0;
+        }
+      } else if (p.bot) botThinkAndAct(p, t);
       // follower는 리더 trail을 따라가며, penalty/pending 중에는 정지
       if (p.follow) {
         const leader = players.get(p.follow.leaderId);
@@ -608,12 +670,56 @@ export function createGame({ io, questionData }) {
       }
     }
 
+    // 사냥꾼 접촉 → 1등에게 추가 문제(60초), 실패하면 즉시 사망(리스폰)
+    for (const h of players.values()) {
+      if (!h.hunter) continue;
+      if (h.hunter.engaged) continue;
+      const target = players.get(h.hunter.targetId);
+      if (!target) continue;
+      if (target.pendingQuestion) continue;
+
+      const hb = playerBoundsAtServer(h);
+      const tb = playerBoundsAtServer(target);
+      if (!rectsTouchOrOverlap(hb, tb)) continue;
+
+      const base = buildQuestion({ questionKey: "mul_normal", questionData, player: target });
+      const q = {
+        ...base,
+        timeLimitMs: HUNTER_QUESTION_MS,
+        prompt: `사냥꾼의 도전! (60초)\n${base.prompt}`
+      };
+
+      target.pendingQuestion = { q, kind: "hunter", askedAt: nowMs() };
+      target.shieldUntil = nowMs() + HUNTER_QUESTION_MS + 2000;
+      target.pvpUntil = target.shieldUntil;
+      target.vx = 0;
+      target.vy = 0;
+
+      h.hunter.engaged = true;
+      h.vx = 0;
+      h.vy = 0;
+      h.pvpUntil = nowMs() + HUNTER_QUESTION_MS + 2500;
+
+      io.to(target.id).emit("question", {
+        q: {
+          id: q.id,
+          domain: q.domain,
+          level: q.level,
+          prompt: q.prompt,
+          timeLimitMs: q.timeLimitMs,
+          ui: q.ui ?? { type: "number" },
+          meta: q.meta ?? null
+        }
+      });
+    }
+
     // PvP collisions
     const arr = Array.from(players.values());
     for (let i = 0; i < arr.length; i += 1) {
       for (let j = i + 1; j < arr.length; j += 1) {
         const a = arr[i];
         const b = arr[j];
+        if (a.hunter || b.hunter) continue;
         if (a.size === b.size) continue;
         const bigger = a.size > b.size ? a : b;
         const smaller = a.size > b.size ? b : a;
